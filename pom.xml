@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>2.6.6</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.pgp</groupId>
+    <artifactId>bouncy-castle-openpgp</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <java.version>11</java.version>
+        <maven.compiler.source>${java.version}</maven.compiler.source>
+        <maven.compiler.target>${java.version}</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <bouncycastle.version>1.77</bouncycastle.version>
+    </properties>
+
+    <!--
+    ════════════════════════════════════════════════════════════════════════
+     WHY THREE FIXES ARE NEEDED FOR BOUNCYCASTLE IN SPRING BOOT FAT JAR
+    ════════════════════════════════════════════════════════════════════════
+
+     Problem 1 — Signed jar breaks fat jar (NoClassDefFoundError)
+     ─────────────────────────────────────────────────────────────
+     bcprov-jdk18on is a SIGNED jar (Trusted-Library: true in MANIFEST.MF).
+     When spring-boot-maven-plugin repackages all jars into one fat jar it
+     extracts and re-zips the class files. This breaks the jar signature.
+     The JVM then refuses to load any class from that jar →
+     NoClassDefFoundError: BouncyCastleProvider.
+
+     Fix: <requiresUnpack> tells spring-boot-maven-plugin to keep bcprov
+     and bcpg as intact nested jars inside the fat jar instead of extracting
+     their classes. The signature stays valid. The Spring Boot classloader
+     handles nested jars natively.
+
+     Problem 2 — Duplicate BC on classpath (ClassCastException / NCDFE)
+     ────────────────────────────────────────────────────────────────────
+     Spring Boot 2.6.6 via spring-security-crypto pulls bcprov-jdk15on:1.70
+     transitively. If both bcprov-jdk15on AND bcprov-jdk18on end up in the
+     fat jar, two copies of BouncyCastleProvider exist. The JVM loads
+     whichever appears first in the classpath. If jdk15on loads first,
+     our code which was compiled against jdk18on gets ClassCastException
+     or NoClassDefFoundError when calling methods added in 1.71+.
+
+     Fix: exclude bcprov-jdk15on from every starter that pulls it.
+
+     Problem 3 — Version not locked (BOM silently downgrades)
+     ─────────────────────────────────────────────────────────
+     Without dependencyManagement, Maven's nearest-wins algorithm may
+     resolve bcprov to 1.70 from the BOM instead of our 1.77.
+
+     Fix: declare both BC artifacts in dependencyManagement to force 1.77.
+    ════════════════════════════════════════════════════════════════════════
+    -->
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcpg-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk18on</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter</artifactId>
+            <exclusions>
+                <!-- Remove bcprov-jdk15on pulled by spring-security-crypto -->
+                <exclusion>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>bcprov-jdk15on</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!-- bcpg: OpenPGP packets, armoring, key rings, MDC, AEAD -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcpg-jdk18on</artifactId>
+        </dependency>
+
+        <!-- bcprov: JCE provider — RSA, AES-256, OCB, SHA -->
+        <dependency>
+            <groupId>org.bouncycastle</groupId>
+            <artifactId>bcprov-jdk18on</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.bouncycastle</groupId>
+                    <artifactId>bcprov-jdk15on</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <mainClass>com.pgp.PGPDemo</mainClass>
+                    <!--
+                      requiresUnpack — FIX FOR SIGNED JAR (Problem 1 above)
+                      ───────────────────────────────────────────────────────
+                      Keeps bcprov and bcpg as intact nested jars inside the
+                      fat jar instead of extracting their class files.
+                      The jar signature stays valid → JVM loads classes normally.
+                      Without this: NoClassDefFoundError on BouncyCastleProvider.
+                    -->
+                    <requiresUnpack>
+                        <dependency>
+                            <groupId>org.bouncycastle</groupId>
+                            <artifactId>bcprov-jdk18on</artifactId>
+                        </dependency>
+                        <dependency>
+                            <groupId>org.bouncycastle</groupId>
+                            <artifactId>bcpg-jdk18on</artifactId>
+                        </dependency>
+                    </requiresUnpack>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>
