@@ -148,4 +148,8 @@
         </plugins>
     </build>
 
+         java.lang.NoSuchMethodError: org.bouncycastle.util.Properties.isOverrideSetTo(Ljava/lang/String;Z)Z
+	at org.bouncycastle.openpgp.operator.PublicKeyKeyEncryptionMethodGenerator.getSessionKeyObfuscationDefault(Unknown Source) ~[bcpg-jdk18on-1.77.jar:1.77.00.0]
+	at org.bouncycastle.openpgp.operator.PublicKeyKeyEncryptionMethodGenerator.<init>(Unknown Source) ~[bcpg-jdk18on-1.77.jar:1.77.00.0]
+
 </project>
